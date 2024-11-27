@@ -8,9 +8,11 @@ jobs:
   test_output:
     runs-on: macos-12
 
-
     steps:
       - name: Clone repository
         uses: actions/checkout@v4
       - run:  python3 --version
+        shell: bash
+
+      - run:  ./test-json.py
         shell: bash
