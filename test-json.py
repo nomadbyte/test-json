@@ -39,6 +39,10 @@ def string_into_c_byte_array(str, cba):
         n += 1
 
 
+def hexstr(bytes):
+    return " ".join("{:02x}".format(b) for b in bytes)
+
+
 class TestJson(object):
 
     def __init__(self):
@@ -67,6 +71,34 @@ class TestJson(object):
             ('packet2_bytes'    , ctypes.c_byte * 20),
         ]
 
+
+    def get_packets(self, dict):
+        packets = []
+
+        if (len(dict) == 0):
+            return
+
+        json_str = json.dumps(dict, ensure_ascii=True)
+
+        pw = two_packet_wrappers()
+
+        self._lib.json2Packets(json_str.encode('ascii'), ctypes.byref(pw))
+
+        if (pw.packet1_bytes_num > 0):
+            p = bytearray(pw.packet1_bytes_num)
+            print("bytes_num:", pw.packet1_bytes_num)
+            for i in range(pw.packet1_bytes_num):
+               print("bytes[{}]:".format(i), pw.packet1_bytes[i])
+               p[i] = (pw.packet1_bytes[i] & 0xff) ## to convert negative vals
+            packets.append(p)
+
+        if (pw.packet2_bytes_num > 0):
+            p = bytearray(pw.packet2_bytes_num)
+            for i in range(pw.packet2_bytes_num):
+               p[i] = (pw.packet2_bytes[i] && 0xff) ## to convert negative vals
+            packets.append(p)
+
+        return packets
 
 
     def get_json0(self, data):
@@ -99,6 +131,31 @@ class TestJson(object):
 
 
 
+def parse_vals(filename):
+    vals = list()
+    with open(filename,"rt") as f: vals = list(f.read().splitlines())
+
+    tj = TestJson()
+
+    tj._expect_packet_2 = True
+
+    for i in range(0, len(vals), 2) :
+        if i+1 == len(vals) : break
+
+        pstr = vals[i]
+        pstr2 = vals[i+1]
+        data = bytearray.fromhex(pstr)
+        data2 = bytearray.fromhex(pstr2)
+
+        if data[0] != data2[0] : continue  ## not matching index
+
+        json_string = tj.get_json0(data)
+        json_string = tj.get_json1(data2)
+
+        d = json.loads(json_string)
+        print("{}:[{}]:[{}]:{}".format(i, pstr, pstr2, d))
+
+
 def run_test():
     tj = TestJson()
 
@@ -117,5 +174,57 @@ def run_test():
     print("[{}]:{}".format(pstr, d))
 
 
+    pstr = "70 00 c6 dd ef 10 45 01 00 00 00 24 10 a7 16 08 08 1f 0e 02"
+    data = bytearray.fromhex(pstr)
+    json_string = tj.get_json0(data)
+    d = json.loads(json_string)
+    print("[{}]:{}".format(pstr, d))
+
+
+    pstr = "70 00 c6 dd ef 10 45 01 00 00 00 24 10 a7 16 08 08 1f aa 05"
+    data = bytearray.fromhex(pstr)
+    json_string = tj.get_json0(data)
+    d = json.loads(json_string)
+    print("[{}]:{}".format(pstr, d))
+
+    tj._expect_packet_2 = True
+
+    pstr = "10 00 02 e1 0f 40 0e 01 00 00 00 30 00 00 00 00 00 00 00 00"
+    data = bytearray.fromhex(pstr)
+    json_string = tj.get_json0(data)
+    if not tj._expect_packet_2 :
+      d = json.loads(json_string)
+      print("[{}]:{}".format(pstr, d))
+
+
+    pstr = "10 5d 00 ff f0 00 09 01 04 00 00 00 00 00 00 00 fe ff 10 00"
+    data = bytearray.fromhex(pstr)
+    json_string = tj.get_json1(data)
+    d = json.loads(json_string)
+    print("[{}]:{}".format(pstr, d))
+
+
+    jstr = '{"106":{"brightness":0.3137}}'
+    d = json.loads(jstr)
+    packets = tj.get_packets(d)
+    if len(packets):
+      for i, p in enumerate(packets):
+        print("{}:{}:[{}]".format(jstr, i, hexstr(p)))
+
+
+def test_cmd():
+    tj = TestJson()
+
+    tj._expect_packet_2 = False
+
+    jstr = '{"1":{"pwr":4}}'
+    d = json.loads(jstr)
+    packets = tj.get_packets(d)
+    if len(packets):
+      for i, p in enumerate(packets):
+        print("{}:{}:[{}]".format(jstr, i, hexstr(p)))
+
+
 if __name__ == '__main__' :
-    run_test()
+    #parse_vals('sens.vals')
+    test_cmd()
