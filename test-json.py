@@ -5,6 +5,8 @@ import ctypes
 import os
 import sys
 
+import struct
+
 
 _ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -156,6 +158,52 @@ def parse_vals(filename):
         print("{}:[{}]:[{}]:{}".format(i, pstr, pstr2, d))
 
 
+class TestSensor(object):
+    @staticmethod
+    def string_into_c_byte_array(str, cba):
+        n = 0
+        for c in str:
+            cba[n] = ord(c)
+            n += 1
+
+    class two_packet_wrappers(ctypes.Structure):
+        _fields_ = [
+            ('packet1_bytes_num', ctypes.c_ubyte),
+            ('packet1_bytes'    , ctypes.c_ubyte * 20),
+            ('packet2_bytes_num', ctypes.c_ubyte),
+            ('packet2_bytes'    , ctypes.c_ubyte * 20),
+        ]
+
+
+    def __init__(self):
+        self._load_lib()
+
+
+    def _load_lib(self):
+        lib_path = os.path.join(_ROOT_DIR, _LIB_FILE)
+        self._lib = ctypes.cdll.LoadLibrary(lib_path)
+        self._lib.packets2Json.restype  = (ctypes.c_char_p)
+
+
+    def get_json(self, sensor1_data, sensor2_data):
+        sensor_packet_1 = sensor1_data
+        sensor_packet_2 = sensor2_data
+
+        pw = self.two_packet_wrappers()
+        #self.string_into_c_byte_array(sensor_packet_1, pw.packet1_bytes)
+        for i in range(len(sensor_packet_1)) : pw.packet1_bytes[i] = sensor_packet_1[i]
+        pw.packet1_bytes_num = len(sensor_packet_1)
+        pw.packet2_bytes_num = 0
+
+        if sensor_packet_2 is not None:
+            #self.string_into_c_byte_array(sensor_packet_2, pw.packet2_bytes)
+            for i in range(len(sensor_packet_2)) : pw.packet2_bytes[i] = sensor_packet_2[i]
+            pw.packet2_bytes_num = len(sensor_packet_2)
+
+        json = self._lib.packets2Json(pw)
+        return json
+
+
 def run_test():
     tj = TestJson()
 
@@ -275,9 +323,50 @@ def test_cmd_range():
                 print("{}:{}:[{}]".format(jstr, i, hexstr(p)))
 
 
+def test_sensor():
+    ts = TestSensor()
+    #data = [ b"\x10\x88\x00\xff\xff\xff\x08\x02K\x00\x00\x00\x00\x00\x00\x00\x01\x00\x04\x00", None ]
+    #data = [ b'\xefY\xff\x00\x00\x00\x08\x02K\x00\x00\x00\x00\x00\x00\x00\x01\x00\x06\x00', None ]
+    data = [ b'p\x00\xc6\xdd\xef\x10E\x01\x00\x00\x00$\x10\xa7\x16\x08\x08\x1f\xaa\x05', None ]
+    #data = [ b'\x10\x00\x02\xe1\x0f@\x0e\x01\x00\x00\x000\x00\x00\x00\x00\x00\x00\x00\x00', \
+    #         b'\x10]\x00\xff\xf0\x00\x08\x02\x03\x00\x00\x00\x00\x0e\x00\x00\x00\x00\x00\x00' ]
+    data = [ b'\x10\x00\x02\xe1\x0f@\x0e\x01\x00\x00\x000\x00\x00\x00\x00\x00\x00\x00\x00', \
+             b'\x10\x00\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xf0\xf1\xf2\xf3\xf4\xf5\xf6\x17\xf8\xf9' ]
+
+    packets = [ bytearray(data[0]), bytearray(data[1]) if data[1] is not None  else None ]
+
+    jstr = ts.get_json(packets[0], packets[1])
+    print("[{}, {}]:{}".format( \
+      hexstr(packets[0]), \
+      (hexstr(packets[1]) if packets[1] is not None else None), \
+      jstr \
+    ))
+
+
+def test_sensor_refl_cm():
+    ts = TestSensor()
+    data = [ b'\x10\x00\x02\xe1\x0f@\x0e\x01\x00\x00\x000\x00\x00\x00\x00\x00\x00\x00\x00', \
+             b'\x10\x00\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xf0\xf1\xf2\xf3\xf4\xf5\xf6\x17\xf8\xf9' ]
+
+    packets = [ bytearray(data[0]), bytearray(data[1]) if data[1] is not None  else None ]
+
+    for i in range(256):
+        packets[1][6] = i
+        packets[1][8] = i
+
+        jstr = ts.get_json(packets[0], packets[1])
+        print("[{}, {}]:{}".format( \
+          hexstr(packets[0]), \
+          (hexstr(packets[1]) if packets[1] is not None else None), \
+          jstr \
+        ))
+        d = json.loads(jstr)
+        print("DBG|0x{:02x},{},{},{}".format(i, d['3001']['refl'], d['3001']['cm'], d['3002']['cm']))
 
 
 if __name__ == '__main__' :
     #parse_vals('sens.vals')
-    test_cmd()
+    #test_cmd()
     #test_cmd_range()
+    #test_sensor()
+    test_sensor_refl_cm()
