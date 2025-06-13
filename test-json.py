@@ -7,6 +7,7 @@ import sys
 
 import math
 import struct
+import time
 
 PI = math.pi
 
@@ -557,14 +558,15 @@ def test_cmd():
     #jstr = '{"100":{"brightness":[10,20,30,40],"index":[true,true,false,true,true,true,true,true,true,true,true,true]}}'
     #jstr = '{"100":{"animation":1,"index":[true,true,false,true,true,true,true,true,true,true,true,true],"brightness":5}}'
     #jstr = '{"104":{"r":0.5,"b":0.5,"g":0.5}}'
-    #jstr = '{"450":{"id":1,"weight":2,"params":{"amp_deg":30,"amp_cm_s":40,"anim":50,"bkup":60,"avg_deg":70,"prd_s":80,"rpt":90,"max_scl":100,"sidelen_cm":8,"sidetm_s":13,"turntm_s":17}}}'
-    #jstr = '{"450":{"id":0,"amp_deg":1,"anim":1,"bkup":1,"avg_deg":1,"prd_s":1,"rpt":1,"max_scl":1,"sidetm_s":1,"turntm_s":1}}'
+    #jstr = '{"450":{"id":10,"weight":0.2,"params":{"amp_deg":30,"amp_cm_s":40,"anim":50,"bkup":60,"avg_deg":70,"prd_s":80,"rpt":90,"max_scl":100,"sidelen_cm":8,"sidetm_s":13,"turntm_s":17}}}'
+    jstr = '{"450":{"id":0,"amp_deg":1,"anim":1,"bkup":1,"avg_deg":1,"prd_s":1,"rpt":1,"max_scl":1,"sidetm_s":1,"turntm_s":1}}'
     #jstr = '{"450":{"id":65535}}'
     #jstr = '{"6001":{}}'
     #jstr = '{"5000":{"name":"New name","pvolume":70}}'
     #jstr = '{"5000":{"pvolume":0.4,"peyebright":0.5}}'
     #jstr = '{"5000":{"anim":3,"color":4}}'
-    jstr = '{"5000":{"avatar":3,"entr":"111111111111111111","s":true}}'
+    #jstr = '{"5000":{"avatar":3,"entr":"111111111111111111","s":true}}'
+    #jstr = '{"204":{"linear_acc_cm_s_s":0.5}}'
     d = json.loads(jstr)
     packets = tj.get_packets(d)
     if len(packets):
@@ -583,6 +585,271 @@ def test_cmd_range():
         if len(packets):
             for i, p in enumerate(packets):
                 print("{}:{}:[{}]".format(jstr, i, hexstr(p)))
+
+
+def assert_json_eq_hex(jdict, hstrs):
+    def hexstr(b):
+        return " ".join("{:02x}".format(c) for c in b)
+
+    tj = TestJson()
+
+    p = tj.get_packets(jdict)
+    expected = bytearray.fromhex(hstrs[0])
+    if p[0] != expected :
+       print('TESTFAILED: json:{}, got:["{}"], expected:["{}"]'.format(jdict, hexstr(p[0]), hexstr(expected)))
+       #assert(False)
+
+def test_json2Packets_6001():
+    def hexstr(b):
+        return " ".join("{:02x}".format(c) for c in b)
+
+    tj = TestJson()
+
+    jdict = {"6001":{}}
+    p = tj.get_packets(jdict)
+    now = int(time.time())
+    (cmd, sid, t) = struct.unpack(">BBI", p[0][0:6])
+    expected = struct.pack(">BBI14s", 0x1f, 0x01, now, bytearray(14))
+    if not (len(expected) == 20 and cmd == expected[0] and sid == 0x01 and abs(now - t) <= 5) : 
+       print('TESTFAILED: json:{}, got:["{}"], expected:["{}"]'.format(jdict, hexstr(p[0]), hexstr(expected)))
+       #assert(False)
+
+def test_json2Packets():
+    assert_json_eq_hex({"1":{"pwr":2}}, ["c8 02"])
+    assert_json_eq_hex({"1":{"pwr":4}}, ["c8 04"])
+    assert_json_eq_hex({"1":{}}, ["c8 00"])
+
+    assert_json_eq_hex({"100":{"brightness":0.5}}, ["08 7f 0a 00 ff 01"])
+    assert_json_eq_hex({"100":{"brightness":-0.5}}, ["08 81 0a 00 ff 01"])
+    assert_json_eq_hex({"100":{"brightness":2}}, ["08 02 0a 00 ff 01"])
+    assert_json_eq_hex({"100":{"brightness":255}}, ["08 ff 0a 00 ff 01"])
+    assert_json_eq_hex({"100":{"brightness":-3}}, ["08 03 0a 00 ff 01"])
+    assert_json_eq_hex({"100":{"index":[True,False,True,False,True,False,True,False,True,False,True,False],"brightness":0.5}}, ["08 7f 09 05 55"])
+    assert_json_eq_hex({"100":{"animation":2}}, ["08 00 0a 02 ff 01"])
+    assert_json_eq_hex({"100":{"animation":255}}, ["08 00 0a ff ff 01"])
+    assert_json_eq_hex({"100":{"animation":-1}}, ["08 00 0a ff ff 01"])
+    assert_json_eq_hex({"100":{"animation":2,"brightness":0.8}}, ["08 cc 0a 02 ff 01"])
+    assert_json_eq_hex({"100":{"index":[True,True,False,True,True,True,True,True,True,True,True,True],"brightness":5,"animation":1}}, ["08 05 0a 01 ff 01"])
+    assert_json_eq_hex({"100":{"index":[2]}}, ["08 00 09 00 01"])
+    assert_json_eq_hex({"100":{"index":[]}}, ["08 00 09 00 00"])
+    assert_json_eq_hex({"100":{}}, ["08 00 0a 00 ff 01"])
+
+    assert_json_eq_hex({"100":{"brightness":[0.5,0.10,0.20,0.30]}}, ["32 7f 19 33 4c 0a 00 ff 01"])
+    assert_json_eq_hex({"100":{"brightness":[5,10,20,30]}}, ["32 05 0a 14 1e 0a 00 ff 01"])
+    assert_json_eq_hex({"100":{"brightness":[10,20,30,40],"index":[True,True,False,True,True,True,True,True,True,True,True,True]}}, ["32 0a 14 1e 28 09 0f fb"])
+    assert_json_eq_hex({"100":{"brightness":[20,30,40]}}, ["08 ff 0a 00 ff 01"])
+    assert_json_eq_hex({"100":{"brightness":[5,10,20,30,40]}}, ["08 ff 0a 00 ff 01"])
+    assert_json_eq_hex({"100":{"brightness":[]}}, ["08 ff 0a 00 ff 01"])
+
+    assert_json_eq_hex({"100":{"index":[False,False,False,True,True,True,False,False,False,False,False,False],"animation":65535,"brightness":1.0}}, ["08 ff 09 00 38"])
+    assert_json_eq_hex({"100":{"index":[False,False,False,True,True,True,False,False,False,False,False,False],"animation":65536,"brightness":1.0}}, ["08 ff 0a 00 ff 01"])
+    assert_json_eq_hex({"100":{"index":[False,False,False,True,True,True,False,False,False,False,False,False],"animation":65534,"brightness":1.0}}, ["08 ff 0a fe ff 01"])
+    assert_json_eq_hex({"100":{"index":[False,False,False,True,True,True,False,False,False,False,False,False],"animation":3,"brightness":1.0}}, ["08 ff 0a 03 ff 01"])
+    assert_json_eq_hex({"100":{"index":[False,False,False,True,True,True,False,False,False,False,False,False],"animation":256,"brightness":1.0}}, ["08 ff 0a 00 ff 01"])
+
+    #assert_json_eq_hex({"101":{"r":0.5,"b":0.5,"g":0.5}}, ["03 7f 7f 7f"]) # ?? ==> 104
+
+    assert_json_eq_hex({"102":{"r":12/255.,"b":22/255.,"g":32/255.}}, ["0b 0c 20 16"])
+
+    assert_json_eq_hex({"103":{"r":13/255.,"b":23/255.,"g":33/255.}}, ["0c 0d 21 17"])
+
+    assert_json_eq_hex({"104":{"r":0.1}}, ["03 19 00 00"])
+    assert_json_eq_hex({"104":{"r":1}}, ["03 ff 00 00"])
+    assert_json_eq_hex({"104":{"r":1.1}}, ["03 18 00 00"])
+    assert_json_eq_hex({"104":{"r":2}}, ["03 fe 00 00"])
+    assert_json_eq_hex({"104":{"r":256}}, ["03 00 00 00"])
+    assert_json_eq_hex({"104":{"r":-0.1}}, ["03 e7 00 00"])
+    assert_json_eq_hex({"104":{"r":-1}}, ["03 01 00 00"])
+    assert_json_eq_hex({"104":{"r":-2}}, ["03 02 00 00"])
+    assert_json_eq_hex({"104":{"r":-256}}, ["03 00 00 00"])
+    assert_json_eq_hex({"104":{"r":0}}, ["03 00 00 00"])
+    assert_json_eq_hex({"104":{"r":0.1,"b":0.2}}, ["03 19 00 33"])
+    assert_json_eq_hex({"104":{"r":0.5,"b":0.5,"g":0.5}}, ["03 7f 7f 7f"])
+    assert_json_eq_hex({"104":{"r":14/255.,"b":24/255.,"g":34/255.}}, ["03 0e 22 18"])
+    assert_json_eq_hex({"104":{}}, ["03 00 00 00"])
+
+    assert_json_eq_hex({"105":{"brightness":15/255.}}, ["04 0f"])
+
+    assert_json_eq_hex({"106":{"brightness":16/255.}}, ["0d 10"])
+
+    assert_json_eq_hex({"107":{"r":17/255.,"b":27/255.,"g":37/255.}}, ["30 11 25 1b"])
+
+    assert_json_eq_hex({"108":{"1":0.2}}, ["31 33 00 00"])
+    assert_json_eq_hex({"108":{"1":1}}, ["31 ff 00 00"])
+    assert_json_eq_hex({"108":{"1":2}}, ["31 fe 00 00"])
+    assert_json_eq_hex({"108":{"1":0}}, ["31 00 00 00"])
+    assert_json_eq_hex({"108":{"1":-0.2}}, ["31 cd 00 00"])
+    assert_json_eq_hex({"108":{"1":-1}}, ["31 01 00 00"])
+    assert_json_eq_hex({"108":{"1":-2}}, ["03 02 00 00"])
+    assert_json_eq_hex({"108":{"1":255}}, ["31 01 00 00"])
+    assert_json_eq_hex({"108":{"1":256}}, ["31 00 00 00"])
+    assert_json_eq_hex({"108":{"1":-255}}, ["31 ff 00 00"])
+    assert_json_eq_hex({"108":{"1":-256}}, ["31 00 00 00"])
+    assert_json_eq_hex({"108":{"1":0.2,"2":0.3}}, ["31 33 4c 00"])
+    assert_json_eq_hex({"108":{"1":18/255.,"2":28/255.,"3":38/255.}}, ["31 12 1c 26"])
+    assert_json_eq_hex({"108":{}}, ["31 00 00 00"])
+
+    assert_json_eq_hex({"109":{"brightness":19/255.}}, ["33 13"])
+    assert_json_eq_hex({"110":{"brightness":20/255.}}, ["34 14"])
+    assert_json_eq_hex({"111":{"brightness":21/255.}}, ["35 15"])
+
+    assert_json_eq_hex({"202":{"degree":0}}, ["07 00 00"])
+    assert_json_eq_hex({"202":{"degree":1}}, ["07 ff 9c"])
+    assert_json_eq_hex({"202":{"degree":6.99}}, ["07 fd 45"])
+    assert_json_eq_hex({"202":{"degree":7.0}}, ["07 fd 44"])
+    assert_json_eq_hex({"202":{"degree":7.01}}, ["07 fd 44"])  ## dash
+    assert_json_eq_hex({"202":{"degree":-1}}, ["07 00 64"])
+    assert_json_eq_hex({"202":{"degree":-23.99}}, ["07 09 5f"])
+    assert_json_eq_hex({"202":{"degree":-24.0}}, ["07 09 60"])
+    assert_json_eq_hex({"202":{"degree":-24.01}}, ["07 09 60"])  ## dash
+    assert_json_eq_hex({"202":{}}, ["07 00 00"])
+
+    assert_json_eq_hex({"203":{"degree":0}}, ["06 00 00"])
+    assert_json_eq_hex({"203":{"degree":1}}, ["06 ff 9c"])
+    assert_json_eq_hex({"203":{"degree":119.99}}, ["06 d1 21"])
+    assert_json_eq_hex({"203":{"degree":120.00}}, ["06 d1 20"])
+    assert_json_eq_hex({"203":{"degree":120.01}}, ["06 d1 20"])  ## dash
+    assert_json_eq_hex({"203":{"degree":-1}}, ["06 00 64"])
+    assert_json_eq_hex({"203":{"degree":-119.99}}, ["06 2e df"])
+    assert_json_eq_hex({"203":{"degree":-120.0}}, ["06 2e e0"])  ## dash
+    assert_json_eq_hex({"203":{"degree":-120.01}}, ["06 2e e0"])
+    assert_json_eq_hex({"203":{}}, ["06 00 00"])
+
+    assert_json_eq_hex({"204":{"linear_cm_s":0}}, ["02 00 00 00"])
+    assert_json_eq_hex({"204":{"linear_cm_s":10}}, ["02 32 00 00"])
+    assert_json_eq_hex({"204":{"linear_cm_s":149.0}}, ["02 e9 00 02"])
+    assert_json_eq_hex({"204":{"linear_cm_s":149.9}}, ["02 ed 00 02"])
+    assert_json_eq_hex({"204":{"linear_cm_s":150.0}}, ["02 ee 00 02"])
+    assert_json_eq_hex({"204":{"linear_cm_s":150.1}}, ["02 ee 00 02"])
+    assert_json_eq_hex({"204":{"linear_cm_s":150.2}}, ["02 ee 00 02"])
+    assert_json_eq_hex({"204":{"linear_cm_s":-50}}, ["02 06 00 07"])
+    assert_json_eq_hex({"204":{"linear_cm_s":-149.9}}, ["02 13 00 05"])
+    assert_json_eq_hex({"204":{"linear_cm_s":-150.0}}, ["02 12 00 05"])
+    assert_json_eq_hex({"204":{"linear_cm_s":-150.2}}, ["02 12 00 05"])
+    assert_json_eq_hex({"204":{"angular_cm_s":0}}, ["02 00 00 00"])
+    assert_json_eq_hex({"204":{"angular_cm_s":1}}, ["02 00 7d 00"])
+    assert_json_eq_hex({"204":{"angular_cm_s":4}}, ["02 00 f4 08"])
+    assert_json_eq_hex({"204":{"angular_cm_s":7.998}}, ["02 00 e7 18"])
+    assert_json_eq_hex({"204":{"angular_cm_s":8.0}}, ["02 00 e8 18"])
+    assert_json_eq_hex({"204":{"angular_cm_s":8.008}}, ["02 00 e8 18"])
+    assert_json_eq_hex({"204":{"angular_cm_s":-1}}, ["02 00 83 38"])
+    assert_json_eq_hex({"204":{"angular_cm_s":-8.0}}, ["02 00 18 20"])
+    assert_json_eq_hex({"204":{"angular_cm_s":-8.008}}, ["02 00 18 20"])
+    assert_json_eq_hex({"204":{"linear_cm_s":10,"angular_cm_s":3}}, ["02 32 77 08"])
+    assert_json_eq_hex({"204":{}}, ["02 00 00 00"])
+
+    assert_json_eq_hex({"204":{"linear_cm_s":1,"pose":True}}, ["2a 05 00 00"])
+
+    assert_json_eq_hex({"205":{"x":25,"y":0,"degree":0,"time":1.25,"dir":2,"mode":2,"wrap_theta":0,"ease":True}}, ["23 fa 00 00 04 e2 00 00 a2"])
+    assert_json_eq_hex({"205":{}}, ["23 00 00 00 00 00 00 00 00"])
+
+    assert_json_eq_hex({"206":{"time":1,"hold":False}}, ["12 00 00 03 e8"])
+    assert_json_eq_hex({"206":{"degree":-10,"time":-0.5,"hold":False}}, ["12 03 e8 fe 0c"])
+    assert_json_eq_hex({"206":{"degree":-10,"time":0.5,"hold":True}}, ["71 03 e8 40 32"])
+    assert_json_eq_hex({"206":{"degree":-10,"time":-0.5,"hold":True}}, ["71 03 e8 7f ce"])
+    assert_json_eq_hex({"206":{"degree":-24}}, ["12 09 60 00 00"])
+    assert_json_eq_hex({"206":{"degree":-25}}, ["12 09 60 00 00"])
+    assert_json_eq_hex({"206":{"time":-5,"hold":True}}, ["71 00 00 7e 0c"])
+    assert_json_eq_hex({"206":{"time":-81.92,"hold":True}}, ["71 00 00 60 00"])
+    assert_json_eq_hex({"206":{"time":-81.93,"hold":True}}, ["71 00 00 60 00"])
+    assert_json_eq_hex({"206":{"time":81.91,"hold":True}}, ["71 00 00 5f ff"])
+    assert_json_eq_hex({"206":{"time":81.92,"hold":True}}, ["71 00 00 5f ff"])
+    assert_json_eq_hex({"206":{"time":32.767,"hold":False}}, ["12 00 00 7f ff"])
+    assert_json_eq_hex({"206":{"time":32.768,"hold":False}}, ["12 00 00 7f ff"])
+    assert_json_eq_hex({"206":{"time":-32.768,"hold":False}}, ["12 00 00 80 00"])
+    assert_json_eq_hex({"206":{"time":-32.769,"hold":False}}, ["12 00 00 80 00"])
+    assert_json_eq_hex({"206":{}}, ["12 00 00 00 00"])
+
+    assert_json_eq_hex({"207":{"time":1,"hold":False}}, ["11 00 00 03 e8"])
+    assert_json_eq_hex({"207":{"degree":-10,"time":-0.5,"hold":False}}, ["11 03 e8 fe 0c"])
+    assert_json_eq_hex({"207":{"degree":-10,"time":0.5,"hold":True}}, ["70 03 e8 40 32"])
+    assert_json_eq_hex({"207":{"degree":-10,"time":-0.5,"hold":True}}, ["70 03 e8 7f ce"])  ## ???
+    assert_json_eq_hex({"207":{"degree":120}}, ["11 d1 20 00 00"])
+    assert_json_eq_hex({"207":{"degree":121}}, ["11 d1 20 00 00"])  ## dash
+    assert_json_eq_hex({"207":{}}, ["11 00 00 00 00"])
+
+    assert_json_eq_hex({"208":{"angular_deg_s":10}}, ["14 00 15"])
+    assert_json_eq_hex({"208":{"angular_deg_s":30}}, ["14 00 41"])
+    assert_json_eq_hex({"208":{"angular_cm_s":-10}}, ["14 fb 1e"])
+    assert_json_eq_hex({"208":{}}, ["14 00 00"])
+
+    assert_json_eq_hex({"209":{"angular_deg_s":10}}, ["13 00 15"])
+    assert_json_eq_hex({"209":{"angular_deg_s":30}}, ["13 00 41"])
+    assert_json_eq_hex({"209":{"angular_cm_s":-1}}, ["13 ff 83"])
+    assert_json_eq_hex({"209":{"angular_cm_s":-10}}, ["13 fb 1e"])
+    assert_json_eq_hex({"209":{}}, ["13 00 00"])
+
+    assert_json_eq_hex({"210":{}}, ["10"])
+
+    assert_json_eq_hex({"211":{"left_cm_s":0,"right_cm_s":0}}, ["01 00 00 00 00"])
+    assert_json_eq_hex({"211":{"left_cm_s":-1,"right_cm_s":1}}, ["01 ff e3 00 1d"])
+    assert_json_eq_hex({"211":{"left_cm_s":-50,"right_cm_s":50}}, ["01 fa 25 05 db"])
+    assert_json_eq_hex({"211":{"left_cm_s":13.5}}, ["01 01 95 00 00"])
+    assert_json_eq_hex({"211":{"right_cm_s":-13.5}}, ["01 00 00 fe 6b"])
+    assert_json_eq_hex({"211":{}}, ["01 00 00 00 00"])
+
+    assert_json_eq_hex({"212":{}}, ["27"])
+
+    assert_json_eq_hex({"213":{"prcnt":0}}, ["75 00"])
+    assert_json_eq_hex({"213":{"prcnt":30}}, ["75 1e"])
+    assert_json_eq_hex({"213":{"prcnt":100}}, ["75 64"])
+    assert_json_eq_hex({"213":{"prcnt":101}}, ["75 64"])
+    assert_json_eq_hex({"213":{"prcnt":-30}}, ["75 e2"])
+    assert_json_eq_hex({"213":{"prcnt":-100}}, ["75 9c"])
+    assert_json_eq_hex({"213":{"prcnt":-101}}, ["75 9c"])
+    assert_json_eq_hex({"213":{}}, ["75 00"])
+
+    assert_json_eq_hex({"214":{"prcnt":0}}, ["76 00"])
+    assert_json_eq_hex({"214":{"prcnt":30}}, ["76 1e"])
+    assert_json_eq_hex({"214":{"prcnt":100}}, ["76 64"])
+    assert_json_eq_hex({"214":{"prcnt":101}}, ["76 64"])
+    assert_json_eq_hex({"214":{"prcnt":-30}}, ["76 e2"])
+    assert_json_eq_hex({"214":{"prcnt":-100}}, ["76 9c"])
+    assert_json_eq_hex({"214":{"prcnt":-101}}, ["76 9c"])
+    assert_json_eq_hex({"214":{}}, ["76 00"])
+
+    assert_json_eq_hex({"300":{"file":"THISFILE","volume":0.1}}, ["18 54 48 49 53 46 49 4c 45 00 00 00 00 00 00 0e 0a"])
+    assert_json_eq_hex({"300":{"file":"SNCH/WHOASCONF"}}, ["18 53 4e 43 48 57 48 4f 41 53 43 4f 4e 46 00 0e 00"])
+    assert_json_eq_hex({"300":{"file":"","volume":0}}, ["0e 00"])  ## ???
+    assert_json_eq_hex({"300":{"file":"STOPSOUND"}}, ["1a 0e 00"])
+    assert_json_eq_hex({"300":{}}, ["0e 00"])  ## ???
+
+    assert_json_eq_hex({"301":{"file":"SNCH/WHOASCONF"}}, ["26 53 4e 43 48 57 48 4f 41 53 43 4f 4e 46 00"])
+    assert_json_eq_hex({"301":{"file":"SYSTROBOT_04"}}, ["26 53 59 53 54 52 4f 42 4f 54 5f 30 34 00 00"])
+    assert_json_eq_hex({"301":{"file":""}}, ["2b"])  ## ???
+    assert_json_eq_hex({"301":{}}, ["2b"])
+
+    assert_json_eq_hex({"400":{"cm_s":0}}, ["72 00"])
+    assert_json_eq_hex({"400":{"cm_s":1}}, ["72 ff"])
+    assert_json_eq_hex({"400":{"cm_s":1.1}}, ["72 ff"])
+    assert_json_eq_hex({"400":{"cm_s":0.5}}, ["72 7f"])
+    assert_json_eq_hex({"400":{"cm_s":-1}}, ["72 00"])
+    assert_json_eq_hex({"400":{}}, ["72 00"])
+
+    assert_json_eq_hex({"401":{"dir":1}},["73 01"])
+    assert_json_eq_hex({"401":{"dir":2}},["73 02"])
+    assert_json_eq_hex({"401":{"dir":3}},["73 02"])
+    assert_json_eq_hex({"401":{"dir":0}},["73 02"])
+    assert_json_eq_hex({"401":{"dir":-1}},["73 02"])
+    assert_json_eq_hex({"401":{}},["73 00"])
+
+    assert_json_eq_hex({"410":{"LEDs":[102,103],"message":9}}, ["b2 03 09"])
+    assert_json_eq_hex({"410":{"LEDs":[100]}}, ["b2 00 00"])
+    assert_json_eq_hex({"410":{"LEDs":[105]}}, ["b2 00 00"])
+    assert_json_eq_hex({"410":{"LEDs":[120]}}, ["b2 00 00"])
+    assert_json_eq_hex({"410":{"LEDs":[]}}, ["b2 00 00"])
+    assert_json_eq_hex({"410":{"message":20}}, ["b2 00 00"])
+    assert_json_eq_hex({"410":{"message":-1}}, ["b2 00 00"])
+    assert_json_eq_hex({"410":{}}, ["b2 00 00"])
+
+    assert_json_eq_hex({"9000":{"pingID":0}}, ["ff 00 00"])
+    assert_json_eq_hex({"9000":{"pingID":1}}, ["ff 01 00"])
+    assert_json_eq_hex({"9000":{"pingID":10}}, ["ff 0a 00"])
+    assert_json_eq_hex({"9000":{"pingID":0xffffff}}, ["ff ff ff"])
+    assert_json_eq_hex({"9000":{"pingID":-1}}, ["ff ff ff"])
+    assert_json_eq_hex({"9000":{}}, ["ff 00 00"])
+
+    test_json2Packets_6001()
 
 
 robot_type = 1003 ## TEST:1003:cue, otherwise can get it from ??serial number
@@ -798,7 +1065,7 @@ def parse_sensor0_packet(packet0, packet1=None):
 
     return res
 
-   
+
 def get_cm_from_refl(refl, dir):
     if dir not in ["front", "back"]: raise ValueError("Direction should be 'front' or 'back'")
     return cm_from_refl[refl][dir]
@@ -1125,9 +1392,10 @@ if __name__ == '__main__' :
     #parse_vals('sens.vals')
     #test_cmd()
     #test_cmd_range()
+    test_json2Packets()
     #test_sensor()
     #test_sensor_byte(0, 15)
     #test_sensor_refl_cm()
-    test_sensor_data(sys.argv[1])
+    #test_sensor_data(sys.argv[1])
     #test_sensor_out_json(sys.argv[1])
 
