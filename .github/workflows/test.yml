@@ -6,7 +6,7 @@ on:
 
 jobs:
   test_output:
-    runs-on: macos-13
+    runs-on: macos-15-intel
 
     steps:
       - name: Clone repository
@@ -15,4 +15,7 @@ jobs:
         shell: bash
 
       - run:  ./test-json.py
+        shell: bash
+
+      - run:  ./test-runner.sh
         shell: bash
